@@ -51,7 +51,10 @@ watch(hiddenIds, value => {
 
 onMounted(async () => {
   try {
-    const response = await fetch('http://localhost:8080/')
+    const API_URL =
+        import.meta.env.VITE_API_URL || 'http://localhost:8080'
+
+    const response = await fetch(`${API_URL}/`)
 
     if (!response.ok) {
       throw new Error('HTTP ' + response.status)
@@ -352,6 +355,7 @@ function resetFilters() {
 </template>
 
 <style>
+
 * {
   box-sizing: border-box;
 }
@@ -372,12 +376,14 @@ button {
   cursor: pointer;
 }
 
+/* Hauptbereich */
 .dashboard {
   max-width: 1150px;
   margin: auto;
   padding: 28px 22px;
 }
 
+/* Kopfbereich */
 .hero {
   padding: 36px;
   border-radius: 20px;
@@ -397,6 +403,7 @@ button {
   font-weight: bold;
 }
 
+/* Navigation und Tabs */
 .tabs {
   display: flex;
   gap: 10px;
@@ -410,6 +417,11 @@ button {
   border-radius: 10px;
   background: white;
   color: #25356b;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.tabs button:hover {
+  background: #edf1fc;
 }
 
 .tabs button.active {
@@ -417,6 +429,11 @@ button {
   color: white;
 }
 
+.tabs button.active:hover {
+  background: #1b2854;
+}
+
+/* Filter und Ergebnisse */
 .filters,
 .results {
   background: white;
@@ -449,11 +466,18 @@ button {
   border-radius: 8px;
   background: #25356b;
   color: white;
+  transition: background 0.2s ease;
 }
 
+.reset:hover {
+  background: #1b2854;
+}
+
+/* Rückmeldungen */
 .notice {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 10px;
   padding: 12px 16px;
   border-radius: 10px;
@@ -464,11 +488,122 @@ button {
 .notice button {
   border: 0;
   background: transparent;
+  color: inherit;
 }
 
 .error {
   color: #b42318;
 }
+
+/* ==================================
+   AUSGEBLENDETE EVENTS
+   ================================== */
+
+/* Liste mit mehr Abstand zwischen den Events */
+.hidden-list {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  max-width: 900px;
+  margin: 28px auto 12px;
+}
+
+/* Einzelne Event-Karte */
+.hidden-card {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 20px;
+  background: #ffffff;
+  border: 1px solid #e1e6f0;
+  border-radius: 16px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.045);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.hidden-card:hover {
+  border-color: #cbd5e8;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07);
+}
+
+/* Kleinere Bilder */
+.hidden-image {
+  display: block;
+  width: 125px;
+  height: 95px;
+  flex: 0 0 125px;
+  object-fit: cover;
+  border-radius: 12px;
+  background: #e9edf5;
+}
+
+/* Falls ein Event kein Bild hat, bleibt das Layout ordentlich */
+.hidden-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.hidden-info h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.hidden-info p {
+  margin: 7px 0;
+  color: #606779;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Blauer, runder Wiederherstellen-Button */
+.restore-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 11px 20px;
+  border: none;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 2px 5px rgba(37, 99, 235, 0.15);
+  transition:
+      background 0.2s ease,
+      box-shadow 0.2s ease,
+      transform 0.2s ease;
+}
+
+.restore-button:hover {
+  background: #1d4ed8;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25);
+  transform: translateY(-1px);
+}
+
+.restore-button:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 3px;
+}
+
+/* Meldung bei leerer Liste */
+.empty-hidden {
+  margin: 28px 0 8px;
+  padding: 24px;
+  border-radius: 14px;
+  background: #f4f6fb;
+  color: #606779;
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* ==================================
+   EVENT-DETAILFENSTER
+   ================================== */
 
 .modal-backdrop {
   position: fixed;
@@ -501,6 +636,7 @@ button {
   border-radius: 50%;
   background: white;
   font-size: 18px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 .detail-image {
@@ -538,10 +674,22 @@ button {
   color: white;
 }
 
+.save-detail:hover {
+  background: #105536;
+}
+
 .hide-detail {
   background: #fff0f0;
   color: #b42318;
 }
+
+.hide-detail:hover {
+  background: #ffe0e0;
+}
+
+/* ==================================
+   RESPONSIVE DESIGN
+   ================================== */
 
 @media (max-width: 600px) {
   .dashboard {
@@ -557,75 +705,68 @@ button {
     padding: 16px;
   }
 
-  .hidden-list {
-    display: grid;
-    gap: 16px;
-    margin-top: 20px;
+  .tabs {
+    gap: 8px;
   }
 
-  .hidden-card {
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    padding: 16px;
-    border: 1px solid #e6e8ef;
-    border-radius: 14px;
-    background: #fafbfe;
-  }
-
-  .hidden-image {
-    width: 140px;
-    height: 110px;
-    flex-shrink: 0;
-    object-fit: cover;
-    border-radius: 10px;
-  }
-
-  .hidden-info {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .hidden-info h3 {
-    margin-top: 0;
-  }
-
-  .hidden-info p {
-    color: #606779;
+  .tabs button {
+    padding: 10px 12px;
     font-size: 14px;
   }
 
-  .restore-button {
-    padding: 10px 14px;
-    border: 0;
-    border-radius: 9px;
-    background: #176b45;
-    color: white;
-    font-weight: bold;
-    cursor: pointer;
+  /* Ausgeblendete Events auf dem Smartphone */
+  .hidden-list {
+    gap: 20px;
+    margin-top: 22px;
   }
 
-  .restore-button:hover {
-    background: #105536;
+  .hidden-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .hidden-image {
+    width: 100%;
+    height: 145px;
+    flex: none;
+  }
+
+  .hidden-info h3 {
+    font-size: 17px;
+  }
+
+  .restore-button {
+    margin-top: 10px;
+    padding: 11px 18px;
+    align-self: flex-start;
   }
 
   .empty-hidden {
-    padding: 20px;
-    border-radius: 10px;
-    background: #f4f6fb;
-    color: #606779;
+    padding: 20px 14px;
   }
 
-  @media (max-width: 600px) {
-    .hidden-card {
-      align-items: flex-start;
-      flex-direction: column;
-    }
+  /* Detailfenster auf kleinen Bildschirmen */
+  .modal-backdrop {
+    padding: 12px;
+  }
 
-    .hidden-image {
-      width: 100%;
-      height: 180px;
-    }
+  .detail-image {
+    height: 200px;
+  }
+
+  .detail-content {
+    padding: 18px;
+  }
+
+  .detail-actions {
+    flex-direction: column;
+  }
+
+  .save-detail,
+  .hide-detail {
+    width: 100%;
   }
 }
 </style>

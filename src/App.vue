@@ -1,6 +1,11 @@
+
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import EventList from './components/EventList.vue'
+
+// ==================================
+// EVENTS UND STATUS
+// ==================================
 
 const events = ref([])
 const loading = ref(true)
@@ -13,6 +18,200 @@ const maxDistance = ref(50)
 const activeTab = ref('discover')
 const selectedEvent = ref(null)
 const notice = ref('')
+
+// Backend-Adresse
+const API_URL = (
+    import.meta.env.VITE_API_URL || 'http://localhost:8080'
+).replace(/\/$/, '')
+
+// ==================================
+// EVENTS AUS DER DATENBANK LADEN
+// ==================================
+
+async function loadEvents() {
+  loading.value = true
+  error.value = ''
+
+  try {
+    const response = await fetch(`${API_URL}/events`)
+
+    if (!response.ok) {
+      throw new Error(`Fehler beim Laden: HTTP ${response.status}`)
+    }
+
+    events.value = await response.json()
+
+  } catch (err) {
+    console.error('Fehler beim Laden der Events:', err)
+    error.value = 'Die Events konnten nicht geladen werden.'
+
+  } finally {
+    loading.value = false
+  }
+}
+
+// ==================================
+// NEUES EVENT IN DER DATENBANK SPEICHERN
+// ==================================
+
+async function createEvent(newEvent) {
+  try {
+    const response = await fetch(`${API_URL}/events`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(newEvent)
+    })
+
+    if (!response.ok) {
+      throw new Error(
+          `Event konnte nicht gespeichert werden: HTTP ${response.status}`
+      )
+    }
+
+    const savedEvent = await response.json()
+
+    events.value.push(savedEvent)
+
+    notice.value = 'Event wurde erfolgreich gespeichert!'
+
+    return savedEvent
+
+  } catch (err) {
+    console.error('Fehler beim Speichern:', err)
+    notice.value = 'Das Event konnte nicht gespeichert werden.'
+    throw err
+  }
+}
+
+// ==================================
+// NEUES EVENT ERSTELLEN
+// ==================================
+
+const showCreateForm = ref(false)
+const savingEvent = ref(false)
+const formError = ref('')
+
+// Daten des neuen Events
+const newEvent = ref({
+  name: '',
+  firstDate: '',
+  lastDate: '',
+  currentTime: '',
+  price: 0,
+  distance: 0,
+  pass: false,
+  category: '',
+  description: '',
+  imageUrl: ''
+})
+
+// Datum von YYYY-MM-DD in DD.MM.YYYY umwandeln
+function formatDateForBackend(value) {
+  const [year, month, day] = value.split('-')
+  return `${day}.${month}.${year}`
+}
+
+// Formular absenden
+async function submitNewEvent() {
+  formError.value = ''
+
+  // Datum prüfen
+  if (!newEvent.value.firstDate || !newEvent.value.lastDate) {
+    formError.value = 'Bitte gib ein Start- und Enddatum ein.'
+    return
+  }
+
+  if (newEvent.value.lastDate < newEvent.value.firstDate) {
+    formError.value = 'Das Enddatum darf nicht vor dem Startdatum liegen.'
+    return
+  }
+
+  savingEvent.value = true
+
+  try {
+    const eventToSave = {
+      name: newEvent.value.name.trim(),
+      firstDate: formatDateForBackend(newEvent.value.firstDate),
+      lastDate: formatDateForBackend(newEvent.value.lastDate),
+      currentTime: newEvent.value.currentTime,
+      price: Number(newEvent.value.price),
+      distance: Number(newEvent.value.distance),
+      pass: newEvent.value.pass,
+      category: newEvent.value.category,
+      description: newEvent.value.description,
+      imageUrl: newEvent.value.imageUrl
+    }
+
+    await createEvent(eventToSave)
+
+    // Formular zurücksetzen
+    newEvent.value = {
+      name: '',
+      firstDate: '',
+      lastDate: '',
+      currentTime: '',
+      price: 0,
+      distance: 0,
+      pass: false,
+      category: '',
+      description: '',
+      imageUrl: ''
+    }
+
+    showCreateForm.value = false
+
+  } catch (err) {
+    formError.value =
+        'Das Event konnte nicht gespeichert werden. Bitte versuche es erneut.'
+
+  } finally {
+    savingEvent.value = false
+  }
+}
+
+// Beim Öffnen der Anwendung Events laden
+onMounted(() => {
+  loadEvents()
+})
+
+// ==================================
+// FAVORITEN UND AUSGEBLENDETE EVENTS
+// ==================================
+
+// Entscheidungen bleiben im Browser erhalten.
+function readStorage(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || '[]')
+    return Array.isArray(value) ? value : []
+  } catch {
+    return []
+  }
+}
+
+const savedIds = ref(readStorage('event-dashboard-saved'))
+const hiddenIds = ref(readStorage('event-dashboard-hidden'))
+
+// Favoriten im localStorage speichern
+watch(savedIds, value => {
+  localStorage.setItem(
+      'event-dashboard-saved',
+      JSON.stringify(value)
+  )
+}, { deep: true })
+
+// Ausgeblendete Events im localStorage speichern
+watch(hiddenIds, value => {
+  localStorage.setItem(
+      'event-dashboard-hidden',
+      JSON.stringify(value)
+  )
+}, { deep: true })
+
+// ==================================
+// AUSGEBLENDETE EVENTS
+// ==================================
 
 const hiddenEvents = computed(() => {
   return events.value.filter(event =>
@@ -28,48 +227,13 @@ function restoreEvent(event) {
   notice.value = `"${event.name}" wurde wiederhergestellt.`
 }
 
-// Entscheidungen bleiben im Browser erhalten.
-function readStorage(key) {
-  try {
-    const value = JSON.parse(localStorage.getItem(key) || '[]')
-    return Array.isArray(value) ? value : []
-  } catch {
-    return []
-  }
-}
-
-const savedIds = ref(readStorage('event-dashboard-saved'))
-const hiddenIds = ref(readStorage('event-dashboard-hidden'))
-
-watch(savedIds, value => {
-  localStorage.setItem('event-dashboard-saved', JSON.stringify(value))
-}, { deep: true })
-
-watch(hiddenIds, value => {
-  localStorage.setItem('event-dashboard-hidden', JSON.stringify(value))
-}, { deep: true })
-
-onMounted(async () => {
-  try {
-    const API_URL =
-        import.meta.env.VITE_API_URL || 'http://localhost:8080'
-
-    const response = await fetch(`${API_URL}/`)
-
-    if (!response.ok) {
-      throw new Error('HTTP ' + response.status)
-    }
-
-    events.value = await response.json()
-  } catch (e) {
-    error.value = 'Events konnten nicht geladen werden. Bitte prüfe, ob dein Backend läuft.'
-    console.error(e)
-  } finally {
-    loading.value = false
-  }
-})
+// ==================================
+// FILTER
+// ==================================
 
 function toISODate(value) {
+  if (!value) return ''
+
   const [day, month, year] = value.split('.')
   return `${year}-${month}-${day}`
 }
@@ -99,6 +263,10 @@ const filteredEvents = computed(() => {
   })
 })
 
+// ==================================
+// GESPEICHERTE EVENTS
+// ==================================
+
 const savedEvents = computed(() => {
   return visibleEvents.value.filter(event =>
       savedIds.value.includes(event.id)
@@ -107,17 +275,31 @@ const savedEvents = computed(() => {
 
 function toggleSaved(event) {
   if (savedIds.value.includes(event.id)) {
-    savedIds.value = savedIds.value.filter(id => id !== event.id)
+    savedIds.value = savedIds.value.filter(
+        id => id !== event.id
+    )
+
     notice.value = 'Event aus deinen gespeicherten Events entfernt.'
+
   } else {
     savedIds.value = [...savedIds.value, event.id]
+
     notice.value = 'Event wurde gespeichert!'
   }
 }
 
+// ==================================
+// EVENTS AUSBLENDEN
+// ==================================
+
 function hideEvent(event) {
-  hiddenIds.value = [...new Set([...hiddenIds.value, event.id])]
-  savedIds.value = savedIds.value.filter(id => id !== event.id)
+  hiddenIds.value = [
+    ...new Set([...hiddenIds.value, event.id])
+  ]
+
+  savedIds.value = savedIds.value.filter(
+      id => id !== event.id
+  )
 
   if (selectedEvent.value?.id === event.id) {
     selectedEvent.value = null
@@ -125,6 +307,10 @@ function hideEvent(event) {
 
   notice.value = 'Event ausgeblendet. Es wird nicht mehr angezeigt.'
 }
+
+// ==================================
+// FILTER ZURÜCKSETZEN
+// ==================================
 
 function resetFilters() {
   selectedDate.value = ''
@@ -135,13 +321,17 @@ function resetFilters() {
 
 <template>
   <main class="dashboard">
+
+    <!-- Kopfbereich -->
     <header class="hero">
       <p class="eyebrow">ENTDECKE DEINE STADT</p>
       <h1>Mein Event Dashboard</h1>
       <p>Finde Konzerte, Festivals und Erlebnisse, die zu dir passen.</p>
     </header>
 
+    <!-- Navigation -->
     <nav class="tabs">
+
       <button
           :class="{ active: activeTab === 'discover' }"
           @click="activeTab = 'discover'"
@@ -162,21 +352,216 @@ function resetFilters() {
       >
         Ausgeblendete Events ({{ hiddenEvents.length }})
       </button>
+
     </nav>
 
+    <!-- Benachrichtigungen -->
     <p v-if="notice" class="notice" role="status">
       {{ notice }}
-      <button @click="notice = ''" aria-label="Meldung schließen">✕</button>
+
+      <button
+          @click="notice = ''"
+          aria-label="Meldung schließen"
+      >
+        ✕
+      </button>
     </p>
 
+    <!-- ==================================
+         EVENTS ENTDECKEN
+         ================================== -->
+
     <template v-if="activeTab === 'discover'">
+
+      <!-- ==================================
+           NEUES EVENT HINZUFÜGEN
+           ================================== -->
+
+      <section class="create-event-section">
+
+        <div class="create-event-header">
+          <div>
+            <h2>Eigenes Event hinzufügen</h2>
+            <p>Trage ein neues Event ein und speichere es in der Datenbank.</p>
+          </div>
+
+          <button
+              class="create-toggle"
+              @click="showCreateForm = !showCreateForm"
+          >
+            {{ showCreateForm ? 'Formular schließen' : '+ Event hinzufügen' }}
+          </button>
+        </div>
+
+        <!-- Eingabeformular -->
+        <form
+            v-if="showCreateForm"
+            class="create-event-form"
+            @submit.prevent="submitNewEvent"
+        >
+
+          <div class="form-grid">
+
+            <!-- Eventname -->
+            <label>
+              Eventname *
+              <input
+                  v-model="newEvent.name"
+                  type="text"
+                  placeholder="z. B. Sommerfestival Berlin"
+                  required
+              />
+            </label>
+
+            <!-- Kategorie -->
+            <label>
+              Kategorie *
+              <select v-model="newEvent.category" required>
+                <option value="" disabled>Bitte auswählen</option>
+                <option value="Konzert">Konzert</option>
+                <option value="Festival">Festival</option>
+                <option value="Kultur">Kultur</option>
+                <option value="Sport">Sport</option>
+                <option value="Freizeit">Freizeit</option>
+                <option value="Comedy">Comedy</option>
+                <option value="Ausstellung">Ausstellung</option>
+                <option value="Sonstiges">Sonstiges</option>
+              </select>
+            </label>
+
+            <!-- Startdatum -->
+            <label>
+              Startdatum *
+              <input
+                  v-model="newEvent.firstDate"
+                  type="date"
+                  required
+              />
+            </label>
+
+            <!-- Enddatum -->
+            <label>
+              Enddatum *
+              <input
+                  v-model="newEvent.lastDate"
+                  type="date"
+                  :min="newEvent.firstDate"
+                  required
+              />
+            </label>
+
+            <!-- Uhrzeit -->
+            <label>
+              Uhrzeit *
+              <input
+                  v-model="newEvent.currentTime"
+                  type="time"
+                  required
+              />
+            </label>
+
+            <!-- Preis -->
+            <label>
+              Preis in Euro *
+              <input
+                  v-model.number="newEvent.price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+              />
+            </label>
+
+            <!-- Entfernung -->
+            <label>
+              Entfernung in km *
+              <input
+                  v-model.number="newEvent.distance"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  required
+              />
+            </label>
+
+            <!-- Bild-URL -->
+            <label>
+              Bild-URL (optional)
+              <input
+                  v-model="newEvent.imageUrl"
+                  type="url"
+                  placeholder="https://beispiel.de/bild.jpg"
+              />
+            </label>
+
+          </div>
+
+          <!-- Beschreibung -->
+          <label class="description-label">
+            Beschreibung
+            <textarea
+                v-model="newEvent.description"
+                rows="4"
+                placeholder="Beschreibe das Event ..."
+            ></textarea>
+          </label>
+
+          <!-- Pass / Ticket -->
+          <label class="pass-label">
+            <input
+                v-model="newEvent.pass"
+                type="checkbox"
+            />
+            Event beinhaltet einen Pass oder ein Ticket
+          </label>
+
+          <!-- Fehlermeldung -->
+          <p v-if="formError" class="form-error">
+            {{ formError }}
+          </p>
+
+          <!-- Buttons -->
+          <div class="form-actions">
+
+            <button
+                type="submit"
+                class="submit-event"
+                :disabled="savingEvent"
+            >
+              {{ savingEvent ? 'Wird gespeichert ...' : '✓ Event speichern' }}
+            </button>
+
+            <button
+                type="button"
+                class="cancel-event"
+                @click="showCreateForm = false"
+            >
+              Abbrechen
+            </button>
+
+          </div>
+
+          <p class="required-hint">
+            * Pflichtfelder
+          </p>
+
+        </form>
+
+      </section>
+
+      <!-- FILTER -->
       <section class="filters">
+
         <h2>Finde dein Event</h2>
 
         <div class="filter-grid">
+
           <label>
             Datum
-            <input v-model="selectedDate" type="date" />
+            <input
+                v-model="selectedDate"
+                type="date"
+            />
           </label>
 
           <label>
@@ -200,24 +585,42 @@ function resetFilters() {
                 step="1"
             />
           </label>
+
         </div>
 
-        <button class="reset" @click="resetFilters">
+        <button
+            class="reset"
+            @click="resetFilters"
+        >
           Filter zurücksetzen
         </button>
+
       </section>
+
     </template>
 
+    <!-- ==================================
+         ERGEBNISSE
+         ================================== -->
+
     <section class="results">
+
+      <!-- Events entdecken -->
       <template v-if="activeTab === 'discover'">
+
         <h2>Events entdecken</h2>
 
         <p v-if="!loading && !error">
           {{ filteredEvents.length }} Events gefunden
         </p>
 
-        <p v-if="loading">Events werden geladen ...</p>
-        <p v-else-if="error" class="error">{{ error }}</p>
+        <p v-if="loading">
+          Events werden geladen ...
+        </p>
+
+        <p v-else-if="error" class="error">
+          {{ error }}
+        </p>
 
         <EventList
             v-else
@@ -227,10 +630,14 @@ function resetFilters() {
             @save="toggleSaved"
             @hide="hideEvent"
         />
+
       </template>
 
+      <!-- Gespeicherte Events -->
       <template v-else-if="activeTab === 'saved'">
+
         <h2>Meine gespeicherten Events</h2>
+
         <p>Hier findest du deine persönlichen Favoriten.</p>
 
         <EventList
@@ -240,9 +647,12 @@ function resetFilters() {
             @save="toggleSaved"
             @hide="hideEvent"
         />
+
       </template>
 
+      <!-- Ausgeblendete Events -->
       <template v-else-if="activeTab === 'hidden'">
+
         <h2>Ausgeblendete Events</h2>
 
         <p>
@@ -250,16 +660,24 @@ function resetFilters() {
           Du kannst sie jederzeit wiederherstellen.
         </p>
 
-        <p v-if="hiddenEvents.length === 0" class="empty-hidden">
+        <p
+            v-if="hiddenEvents.length === 0"
+            class="empty-hidden"
+        >
           Du hast momentan keine Events ausgeblendet.
         </p>
 
-        <div v-else class="hidden-list">
+        <div
+            v-else
+            class="hidden-list"
+        >
+
           <article
               v-for="event in hiddenEvents"
               :key="event.id"
               class="hidden-card"
           >
+
             <img
                 v-if="event.imageUrl"
                 :src="event.imageUrl"
@@ -268,13 +686,16 @@ function resetFilters() {
             />
 
             <div class="hidden-info">
+
               <h3>{{ event.name }}</h3>
 
               <p>
                 {{ event.firstDate }}
+
                 <template v-if="event.lastDate !== event.firstDate">
                   – {{ event.lastDate }}
                 </template>
+
                 · {{ event.currentTime }} Uhr
               </p>
 
@@ -289,20 +710,30 @@ function resetFilters() {
               >
                 ↩ Event wiederherstellen
               </button>
+
             </div>
+
           </article>
+
         </div>
+
       </template>
+
     </section>
 
-    <!-- Detailfenster -->
+    <!-- ==================================
+         EVENT-DETAILFENSTER
+         ================================== -->
+
     <div
         v-if="selectedEvent"
         class="modal-backdrop"
         @click.self="selectedEvent = null"
         @keydown.esc="selectedEvent = null"
     >
+
       <article class="modal">
+
         <button
             class="close"
             @click="selectedEvent = null"
@@ -319,42 +750,75 @@ function resetFilters() {
         />
 
         <div class="detail-content">
-          <p class="eyebrow">{{ selectedEvent.category }}</p>
+
+          <p class="eyebrow">
+            {{ selectedEvent.category }}
+          </p>
+
           <h2>{{ selectedEvent.name }}</h2>
 
           <p>
             <strong>Datum:</strong>
             {{ selectedEvent.firstDate }}
+
             <template v-if="selectedEvent.lastDate !== selectedEvent.firstDate">
               – {{ selectedEvent.lastDate }}
             </template>
           </p>
 
-          <p><strong>Uhrzeit:</strong> {{ selectedEvent.currentTime }} Uhr</p>
-          <p><strong>Preis:</strong> {{ Number(selectedEvent.price).toFixed(2) }} €</p>
-          <p><strong>Entfernung:</strong> {{ selectedEvent.distance }} km</p>
+          <p>
+            <strong>Uhrzeit:</strong>
+            {{ selectedEvent.currentTime }} Uhr
+          </p>
 
-          <p class="description">{{ selectedEvent.description }}</p>
+          <p>
+            <strong>Preis:</strong>
+            {{ Number(selectedEvent.price).toFixed(2) }} €
+          </p>
+
+          <p>
+            <strong>Entfernung:</strong>
+            {{ selectedEvent.distance }} km
+          </p>
+
+          <p class="description">
+            {{ selectedEvent.description }}
+          </p>
 
           <div class="detail-actions">
-            <button class="save-detail" @click="toggleSaved(selectedEvent)">
+
+            <button
+                class="save-detail"
+                @click="toggleSaved(selectedEvent)"
+            >
               ✓
+
               {{ savedIds.includes(selectedEvent.id)
                 ? 'Aus Favoriten entfernen'
                 : 'Event speichern' }}
             </button>
 
-            <button class="hide-detail" @click="hideEvent(selectedEvent)">
+            <button
+                class="hide-detail"
+                @click="hideEvent(selectedEvent)"
+            >
               Nicht mehr anzeigen
             </button>
+
           </div>
+
         </div>
+
       </article>
+
     </div>
+
   </main>
 </template>
 
 <style>
+
+/* Allgemeine Einstellungen */
 
 * {
   box-sizing: border-box;
@@ -377,6 +841,7 @@ button {
 }
 
 /* Hauptbereich */
+
 .dashboard {
   max-width: 1150px;
   margin: auto;
@@ -384,6 +849,7 @@ button {
 }
 
 /* Kopfbereich */
+
 .hero {
   padding: 36px;
   border-radius: 20px;
@@ -404,6 +870,7 @@ button {
 }
 
 /* Navigation und Tabs */
+
 .tabs {
   display: flex;
   gap: 10px;
@@ -434,6 +901,7 @@ button {
 }
 
 /* Filter und Ergebnisse */
+
 .filters,
 .results {
   background: white;
@@ -474,6 +942,7 @@ button {
 }
 
 /* Rückmeldungen */
+
 .notice {
   display: flex;
   justify-content: space-between;
@@ -496,10 +965,163 @@ button {
 }
 
 /* ==================================
+   NEUES EVENT ERSTELLEN
+   ================================== */
+
+.create-event-section {
+  background: white;
+  padding: 24px;
+  border-radius: 16px;
+  margin-bottom: 24px;
+  border: 1px solid #e1e6f0;
+}
+
+.create-event-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.create-event-header h2 {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.create-event-header p {
+  color: #606779;
+  margin-bottom: 0;
+}
+
+.create-toggle {
+  padding: 12px 18px;
+  border: none;
+  border-radius: 9px;
+  background: #25356b;
+  color: white;
+  font-weight: bold;
+  transition: background 0.2s ease;
+}
+
+.create-toggle:hover {
+  background: #1b2854;
+}
+
+.create-event-form {
+  margin-top: 24px;
+  padding-top: 22px;
+  border-top: 1px solid #e1e6f0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+.form-grid label,
+.description-label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-weight: bold;
+}
+
+.form-grid input,
+.form-grid select,
+.description-label textarea {
+  width: 100%;
+  padding: 11px;
+  border: 1px solid #d9deea;
+  border-radius: 8px;
+  background: white;
+  color: #202536;
+}
+
+.form-grid input:focus,
+.form-grid select:focus,
+.description-label textarea:focus {
+  outline: 2px solid #5368a6;
+  border-color: #5368a6;
+}
+
+.description-label {
+  margin-top: 22px;
+}
+
+.description-label textarea {
+  resize: vertical;
+  font-family: Arial, sans-serif;
+  line-height: 1.5;
+}
+
+.pass-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  font-weight: normal;
+}
+
+.pass-label input {
+  width: 18px;
+  height: 18px;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.submit-event,
+.cancel-event {
+  padding: 12px 18px;
+  border: none;
+  border-radius: 9px;
+  font-weight: bold;
+}
+
+.submit-event {
+  background: #176b45;
+  color: white;
+}
+
+.submit-event:hover {
+  background: #105536;
+}
+
+.submit-event:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cancel-event {
+  background: #edf0f6;
+  color: #25356b;
+}
+
+.cancel-event:hover {
+  background: #dfe4ef;
+}
+
+.form-error {
+  color: #b42318;
+  margin-top: 16px;
+}
+
+.required-hint {
+  color: #606779;
+  font-size: 12px;
+  margin-top: 14px;
+}
+
+/* ==================================
    AUSGEBLENDETE EVENTS
    ================================== */
 
-/* Liste mit mehr Abstand zwischen den Events */
 .hidden-list {
   display: flex;
   flex-direction: column;
@@ -508,7 +1130,6 @@ button {
   margin: 28px auto 12px;
 }
 
-/* Einzelne Event-Karte */
 .hidden-card {
   display: flex;
   align-items: center;
@@ -526,7 +1147,6 @@ button {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07);
 }
 
-/* Kleinere Bilder */
 .hidden-image {
   display: block;
   width: 125px;
@@ -537,7 +1157,6 @@ button {
   background: #e9edf5;
 }
 
-/* Falls ein Event kein Bild hat, bleibt das Layout ordentlich */
 .hidden-info {
   flex: 1;
   min-width: 0;
@@ -557,7 +1176,8 @@ button {
   line-height: 1.5;
 }
 
-/* Blauer, runder Wiederherstellen-Button */
+/* Wiederherstellen-Button */
+
 .restore-button {
   display: inline-flex;
   align-items: center;
@@ -590,7 +1210,8 @@ button {
   outline-offset: 3px;
 }
 
-/* Meldung bei leerer Liste */
+/* Leere Liste */
+
 .empty-hidden {
   margin: 28px 0 8px;
   padding: 24px;
@@ -692,6 +1313,7 @@ button {
    ================================== */
 
 @media (max-width: 600px) {
+
   .dashboard {
     padding: 14px;
   }
@@ -715,6 +1337,7 @@ button {
   }
 
   /* Ausgeblendete Events auf dem Smartphone */
+
   .hidden-list {
     gap: 20px;
     margin-top: 22px;
@@ -748,6 +1371,7 @@ button {
   }
 
   /* Detailfenster auf kleinen Bildschirmen */
+
   .modal-backdrop {
     padding: 12px;
   }
@@ -768,5 +1392,33 @@ button {
   .hide-detail {
     width: 100%;
   }
+
+  /* Neues Event-Formular auf Smartphones */
+
+  .create-event-section {
+    padding: 16px;
+  }
+
+  .create-event-header {
+    align-items: stretch;
+  }
+
+  .create-toggle {
+    width: 100%;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-actions {
+    flex-direction: column;
+  }
+
+  .submit-event,
+  .cancel-event {
+    width: 100%;
+  }
 }
+
 </style>
